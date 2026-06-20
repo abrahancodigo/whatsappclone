@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +17,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = createClient();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,26 +24,23 @@ export default function RegisterPage() {
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username,
-            display_name: displayName || username,
-          },
-        },
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          displayName: displayName || username,
+        }),
       });
 
-      if (error) {
-        setError(error.message);
+      const data = await res.json();
+
+      if (data.error) {
+        setError(data.error);
       } else {
-        if (data.session) {
-          router.push("/chats");
-          router.refresh();
-        } else {
-          router.push("/login?registered=true");
-        }
+        router.push("/chats");
+        router.refresh();
       }
     } catch (err) {
       setError("Error inesperado");
