@@ -17,6 +17,13 @@ export default async function MainLayout({
     redirect("/login");
   }
 
+  const data = await (supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single() as any);
+  const profile = data.data as any;
+
   return (
     <div className="flex h-full bg-[var(--color-bg-app)]">
       <aside className="hidden w-16 flex-col items-center justify-between border-r border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] py-4 md:flex">
@@ -55,11 +62,17 @@ export default async function MainLayout({
             <MoreVertical className="h-6 w-6" />
           </button>
           <div className="h-10 w-10 rounded-full bg-gray-400">
-            <img
-              src={(await supabase.from("profiles").select("avatar_url").eq("id", user.id).single()).data?.avatar_url || ""}
-              alt="Profile"
-              className="h-full w-full rounded-full object-cover"
-            />
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt="Profile"
+                className="h-full w-full rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center rounded-full bg-[var(--color-wa-green)] text-sm font-medium text-white">
+                {(profile?.display_name || "U").charAt(0).toUpperCase()}
+              </div>
+            )}
           </div>
         </div>
       </aside>

@@ -22,10 +22,12 @@ export default function ChatsPage() {
   const { data: profile } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
+      const u = (await supabase.auth.getUser()).data.user;
+      if (!u) throw new Error("No autenticado");
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", (await supabase.auth.getUser()).data.user?.id)
+        .eq("id", u.id)
         .single();
       if (error) throw error;
       return data as Profile;
@@ -35,7 +37,7 @@ export default function ChatsPage() {
   const { data: chats = [], isLoading } = useQuery({
     queryKey: ["chats"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: rawData, error } = await supabase
         .from("chats")
         .select(
           `*,\n         chat_members!inner(*),\n         messages!left(content, created_at, sender_id),\n         profiles!chat_members.user_id(*)`
@@ -44,7 +46,8 @@ export default function ChatsPage() {
 
       if (error) throw error;
 
-      const processed = (data || []).map((chat) => {
+      const data = rawData as any[] || [];
+      const processed = data.map((chat) => {
         const otherMembers = (chat.chat_members || []).filter(
           (m: ChatMember) => m.user_id !== profile?.id
         );
@@ -82,7 +85,7 @@ export default function ChatsPage() {
     mutationFn: async () => {
       if (!profile) return null;
       const chatId = crypto.randomUUID();
-      const { error } = await supabase.from("chats").insert({
+      const { error } = await (supabase.from("chats") as any).insert({
         id: chatId,
         type: newChatType,
         name: newChatType === "group" ? newChatName : null,
@@ -92,12 +95,12 @@ export default function ChatsPage() {
       if (error) throw error;
 
       if (newChatType === "direct") {
-        await supabase.from("chat_members").insert([
+        await (supabase.from("chat_members") as any).insert([
           { chat_id: chatId, user_id: profile.id },
           { chat_id: chatId, user_id: newChatName },
         ]);
       } else {
-        await supabase.from("chat_members").insert([
+        await (supabase.from("chat_members") as any).insert([
           { chat_id: chatId, user_id: profile.id, role: "admin" },
         ]);
       }

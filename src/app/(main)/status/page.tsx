@@ -19,11 +19,13 @@ export default function StatusPage() {
   const { data: profile } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error("No autenticado");
+      const { data, error } = await (supabase
         .from("profiles")
         .select("*")
-        .eq("id", (await supabase.auth.getUser()).data.user?.id)
-        .single();
+        .eq("id", user.id)
+        .single() as any);
       if (error) throw error;
       return data as Profile;
     },
@@ -32,13 +34,13 @@ export default function StatusPage() {
   const { data: statuses = [] } = useQuery({
     queryKey: ["statuses"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from("statuses")
         .select(
           `*,\n         profiles!user_id(*)`,
           { head: false }
         )
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false }) as any);
 
       if (error) throw error;
       return data as (Status & { profiles: Profile })[];
@@ -69,7 +71,7 @@ export default function StatusPage() {
         fileUrl = publicUrl;
       }
 
-      const { error } = await supabase.from("statuses").insert({
+      const { error } = await (supabase.from("statuses") as any).insert({
         user_id: profile.id,
         type: statusType,
         content: statusType === "text" ? statusContent : null,

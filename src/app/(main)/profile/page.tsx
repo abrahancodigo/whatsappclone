@@ -19,11 +19,13 @@ export default function ProfilePage() {
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error("No autenticado");
+      const { data, error } = await (supabase
         .from("profiles")
         .select("*")
-        .eq("id", (await supabase.auth.getUser()).data.user?.id)
-        .single();
+        .eq("id", user.id)
+        .single() as any);
       if (error) throw error;
       setDisplayName(data.display_name);
       setAbout(data.about);
@@ -54,14 +56,14 @@ export default function ProfilePage() {
         avatarUrl = publicUrl;
       }
 
-      const { error } = await supabase
+      const { error } = await (supabase
         .from("profiles")
         .update({
           display_name: displayName,
           about: about,
           avatar_url: avatarUrl,
-        })
-        .eq("id", profile.id);
+        } as never)
+        .eq("id", profile.id) as any);
 
       if (error) throw error;
     },

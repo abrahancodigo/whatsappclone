@@ -15,11 +15,13 @@ export default function CallsPage() {
   const { data: profile } = useQuery({
     queryKey: ["profile"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error("No autenticado");
+      const { data, error } = await (supabase
         .from("profiles")
         .select("*")
-        .eq("id", (await supabase.auth.getUser()).data.user?.id)
-        .single();
+        .eq("id", user.id)
+        .single() as any);
       if (error) throw error;
       return data as Profile;
     },
@@ -28,14 +30,14 @@ export default function CallsPage() {
   const { data: calls = [], isLoading } = useQuery({
     queryKey: ["calls"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from("calls")
         .select(
           `*,\n         profiles!started_by(*)`,
           { head: false }
         )
         .order("started_at", { ascending: false })
-        .limit(50);
+        .limit(50) as any);
 
       if (error) throw error;
       return data as (Call & { profiles: Profile })[];
@@ -109,14 +111,15 @@ export default function CallsPage() {
     setCallRecipient(recipient);
     setIsInCall(true);
 
+    if (!profile) return;
     const roomName = `call-${crypto.randomUUID()}`;
 
-    supabase.from("calls").insert({
+    (supabase.from("calls") as any).insert({
       room_name: roomName,
       type: type,
       status: "started",
-      started_by: profile?.id,
-    }).then(({ error }) => {
+      started_by: profile.id,
+    }).then(({ error }: { error: any }) => {
       if (error) {
         console.error("Error starting call:", error);
         setIsInCall(false);
@@ -128,15 +131,14 @@ export default function CallsPage() {
 
   const endCall = () => {
     if (callType && profile?.id) {
-      supabase
-        .from("calls")
+      (supabase.from("calls") as any)
         .update({
           status: isInCall ? "ended" : (callRecipient ? "answered" : "missed"),
           ended_at: new Date().toISOString(),
         })
         .eq("room_name", `call-${crypto.randomUUID()}`)
         .eq("started_by", profile.id)
-        .then(({ error }) => {
+        .then(({ error }: { error: any }) => {
           if (error) {
             console.error("Error ending call:", error);
           }
@@ -283,7 +285,7 @@ export default function CallsPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-[var(--color-tx-primary)]">
-                          {isOutgoing ? "Tú" : otherParty ? (otherParty as Profile).display_name || (otherParty as Profile).username : "Desconocido"}
+                          {isOutgoing ? "Tú" : otherParty ? "Usuario" : "Desconocido"}
                         </p>
                         <div className="flex items-center gap-1 text-xs text-[var(--color-tx-tertiary)]">
                           <Clock className="h-3 w-3" />
