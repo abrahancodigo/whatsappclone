@@ -1,44 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import type { Database } from "@/types/database";
-
-function createAdminClient() {
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() { return []; },
-        setAll() {},
-      },
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  );
-}
-
-async function createAnonClient() {
-  const cookieStore = await cookies();
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-}
 
 export async function POST(request: Request) {
   try {
@@ -58,7 +20,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const adminClient = createAdminClient();
+    const adminClient = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        cookies: {
+          getAll() { return []; },
+          setAll() {},
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
 
     const { data, error } = await adminClient.auth.admin.createUser({
       email,
@@ -82,30 +57,12 @@ export async function POST(request: Request) {
 
     const userId = data.user.id;
 
-    const { data: existingProfile } = await (adminClient
-      .from("profiles")
-      .select("id")
-      .eq("id", userId)
-      .single() as any);
-
-    if (!existingProfile) {
-      await (adminClient.from("profiles") as any).insert({
-        id: userId,
-        email: email,
-        display_name: displayName || email.split("@")[0],
-        username: email.split("@")[0],
-      });
-    }
-
-    const anonClient = await createAnonClient();
-    const signInResult = await anonClient.auth.signInWithPassword({
-      email,
-      password,
+    await (adminClient.from("profiles") as any).upsert({
+      id: userId,
+      email: email,
+      display_name: displayName || email.split("@")[0],
+      username: email.split("@")[0],
     });
-
-    if (signInResult.error) {
-      console.error("Auto sign-in error:", signInResult.error);
-    }
 
     return NextResponse.json({
       user: {
