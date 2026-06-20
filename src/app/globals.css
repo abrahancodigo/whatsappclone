@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-wa-green: #00a884;
+  --color-wa-green-dark: #008069;
+  --color-wa-teal: #075e54;
+  --color-wa-green-light: #25d366;
+  --color-wa-blue: #53bdeb;
+
+  --color-bg-app: #111b21;
+  --color-bg-panel: #202c33;
+  --color-bg-panel-2: #233138;
+  --color-bg-hover: #2a3942;
+  --color-bg-input: #2a3942;
+  --color-bubble-out: #005c4b;
+  --color-bubble-in: #202c33;
+  --color-chat-bg: #0b141a;
+  --color-border-wa: #2a3942;
+
+  --color-tx-primary: #e9edef;
+  --color-tx-secondary: #8696a0;
+  --color-tx-tertiary: #667781;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg-app);
+  color: var(--color-tx-primary);
+}
+
+/* Patrón de fondo del chat estilo WhatsApp */
+.chat-doodles {
+  background-color: var(--color-chat-bg);
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 40px 40px, 50px 50px;
+}
+
+/* Scrollbar estilo WhatsApp */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(134, 150, 160, 0.35);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(134, 150, 160, 0.55);
+}
+
+/* Cola de burbuja */
+.bubble-tail-out::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0;
+  height: 0;
+  border: 8px solid transparent;
+  border-top-color: var(--color-bubble-out);
+  border-right: 0;
+  border-bottom: 0;
+}
+.bubble-tail-in::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 0;
+  height: 0;
+  border: 8px solid transparent;
+  border-top-color: var(--color-bubble-in);
+  border-left: 0;
+  border-bottom: 0;
+}
+
+@keyframes wa-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: wa-fade-in 0.18s ease-out;
+}
+
+@keyframes wa-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  animation: wa-scale-in 0.2s ease-out;
+}
+
+input, textarea, button {
+  font-family: inherit;
+}
