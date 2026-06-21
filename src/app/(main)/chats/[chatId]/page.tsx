@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { type Profile, type Message, type Chat, type ChatMember } from "@/types/database";
 import { formatTime, cn } from "@/lib/utils";
-import { Send, Paperclip, Smile, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Check, MessageCircle, Reply } from "lucide-react";
+import { Send, Paperclip, ArrowLeft, X, Check, MessageCircle, Reply } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -258,18 +258,6 @@ export default function ChatPage({ params }: ChatPageProps) {
             </p>
           </div>
         </div>
-
-        <div className="flex gap-2">
-          <button className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]">
-            <Phone className="h-5 w-5" />
-          </button>
-          <button className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]">
-            <Video className="h-5 w-5" />
-          </button>
-          <button className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]">
-            <MoreVertical className="h-5 w-5" />
-          </button>
-        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto bg-[var(--color-bg-app)] p-4">
@@ -414,12 +402,6 @@ export default function ChatPage({ params }: ChatPageProps) {
             onChange={handleFileSelect}
             accept="image/*,.pdf,.doc,.docx,.txt"
           />
-          <button
-            onClick={() => {}}
-            className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
-          >
-            <Smile className="h-5 w-5" />
-          </button>
           <div className="relative flex-1">
             <input
               type="text"

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { type Profile } from "@/types/database";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Camera, User, Edit3, Check, X } from "lucide-react";
+import { Camera, Edit3, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 export default function ProfilePage() {
@@ -15,6 +16,7 @@ export default function ProfilePage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const supabase = createClient();
+  const router = useRouter();
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile"],
@@ -41,7 +43,7 @@ export default function ProfilePage() {
 
       if (selectedImage) {
         const fileExt = selectedImage.name.split(".").pop();
-        const filePath = `${profile.id}.${fileExt}`;
+        const filePath = `${profile.id}-${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from("avatars")
@@ -93,6 +95,12 @@ export default function ProfilePage() {
     updateProfileMutation.mutate();
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-[var(--color-bg-app)]">
@@ -127,7 +135,7 @@ export default function ProfilePage() {
               </div>
             )}
             {isEditing && (
-              <label className="absolute bottom-0 right-0 rounded-full bg-[var(--color-wa-green)] p-2 text-white hover:bg-[var(--color-wa-green-dark)]">
+              <label className="absolute bottom-0 right-0 cursor-pointer rounded-full bg-[var(--color-wa-green)] p-2 text-white hover:bg-[var(--color-wa-green-dark)]">
                 <Camera className="h-4 w-4" />
                 <input
                   type="file"
@@ -203,20 +211,15 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] p-4">
-                <h2 className="mb-3 text-lg font-medium text-[var(--color-tx-primary)]">Configuración</h2>
-                <div className="space-y-2">
-                  <button className="w-full rounded-lg p-3 text-left text-sm text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]">
-                    Notificaciones
-                  </button>
-                  <button className="w-full rounded-lg p-3 text-left text-sm text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]">
-                    Privacidad
-                  </button>
-                  <button className="w-full rounded-lg p-3 text-left text-sm text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]">
-                    Archivos multimedia
-                  </button>
+              <button
+                onClick={handleLogout}
+                className="w-full rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-left text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <LogOut className="h-5 w-5" />
+                  <span>Cerrar sesión</span>
                 </div>
-              </div>
+              </button>
             </div>
           )}
         </div>

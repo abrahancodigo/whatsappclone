@@ -1,16 +1,21 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { type Profile, type Call } from "@/types/database";
-import { Phone, Video, Clock, CheckCircle, XCircle, AlertCircle, MoreVertical } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Phone, Video, Clock, CheckCircle, XCircle, AlertCircle, ArrowLeft } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function CallsPage() {
   const [isInCall, setIsInCall] = useState(false);
   const [callType, setCallType] = useState<"audio" | "video" | null>(null);
   const [callRecipient, setCallRecipient] = useState<Profile | null>(null);
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const router = useRouter();
   const supabase = createClient();
+  const queryClient = useQueryClient();
 
   const { data: profile } = useQuery({
     queryKey: ["profile"],
@@ -27,22 +32,78 @@ export default function CallsPage() {
     },
   });
 
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .neq("id", profile?.id || "")
+        .limit(20);
+      if (error) throw error;
+      return (data || []) as Profile[];
+    },
+    enabled: !!profile,
+  });
+
   const { data: calls = [], isLoading } = useQuery({
     queryKey: ["calls"],
     queryFn: async () => {
       const { data, error } = await (supabase
         .from("calls")
-        .select(
-          `*,\n         profiles!started_by(*)`,
-          { head: false }
-        )
+        .select("*")
         .order("started_at", { ascending: false })
         .limit(50) as any);
 
       if (error) throw error;
-      return data as (Call & { profiles: Profile })[];
+      return data as Call[];
     },
     enabled: !!profile,
+  });
+
+  const startCallMutation = useMutation({
+    mutationFn: async ({ type, recipient }: { type: "audio" | "video"; recipient: Profile }) => {
+      const roomName = `call-${crypto.randomUUID()}`;
+      const { data, error } = await (supabase.from("calls") as any)
+        .insert({
+          room_name: roomName,
+          type: type,
+          status: "started",
+          started_by: profile!.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Call;
+    },
+    onSuccess: (call, variables) => {
+      setActiveCallId(call.id);
+      setCallType(variables.type);
+      setCallRecipient(variables.recipient);
+      setIsInCall(true);
+    },
+  });
+
+  const endCallMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeCallId) return;
+      const { error } = await (supabase.from("calls") as any)
+        .update({
+          status: "ended",
+          ended_at: new Date().toISOString(),
+        })
+        .eq("id", activeCallId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calls"] });
+      setIsInCall(false);
+      setCallType(null);
+      setCallRecipient(null);
+      setActiveCallId(null);
+    },
   });
 
   const formatTimeAgo = (dateString: string) => {
@@ -50,49 +111,33 @@ export default function CallsPage() {
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
 
-    if (diffInMinutes < 60) {
-      return `${diffInMinutes}m`;
-    } else if (diffInMinutes < 1440) {
-      return `${Math.floor(diffInMinutes / 60)}h`;
-    } else {
-      return `${Math.floor(diffInMinutes / 1440)}d`;
-    }
+    if (diffInMinutes < 60) return `${diffInMinutes}m`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h`;
+    return `${Math.floor(diffInMinutes / 1440)}d`;
   };
 
   const getCallIcon = (call: Call) => {
-    if (call.type === "video") {
-      return <Video className="h-4 w-4" />;
-    }
+    if (call.type === "video") return <Video className="h-4 w-4" />;
     return <Phone className="h-4 w-4" />;
   };
 
   const getCallStatusIcon = (status: string) => {
     switch (status) {
-      case "answered":
-        return <CheckCircle className="h-4 w-4 text-green-400" />;
-      case "missed":
-        return <XCircle className="h-4 w-4 text-red-400" />;
-      case "declined":
-        return <XCircle className="h-4 w-4 text-red-400" />;
-      case "ended":
-        return <Clock className="h-4 w-4 text-[var(--color-tx-tertiary)]" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-yellow-400" />;
+      case "answered": return <CheckCircle className="h-4 w-4 text-green-400" />;
+      case "missed": return <XCircle className="h-4 w-4 text-red-400" />;
+      case "declined": return <XCircle className="h-4 w-4 text-red-400" />;
+      case "ended": return <Clock className="h-4 w-4 text-[var(--color-tx-tertiary)]" />;
+      default: return <AlertCircle className="h-4 w-4 text-yellow-400" />;
     }
   };
 
   const getCallStatusText = (status: string) => {
     switch (status) {
-      case "answered":
-        return "Recibida";
-      case "missed":
-        return "Perdida";
-      case "declined":
-        return "Rechazada";
-      case "ended":
-        return "Finalizada";
-      default:
-        return "Iniciada";
+      case "answered": return "Recibida";
+      case "missed": return "Perdida";
+      case "declined": return "Rechazada";
+      case "ended": return "Finalizada";
+      default: return "Iniciada";
     }
   };
 
@@ -106,61 +151,26 @@ export default function CallsPage() {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
-  const startCall = (type: "audio" | "video", recipient: Profile) => {
-    setCallType(type);
-    setCallRecipient(recipient);
-    setIsInCall(true);
-
-    if (!profile) return;
-    const roomName = `call-${crypto.randomUUID()}`;
-
-    (supabase.from("calls") as any).insert({
-      room_name: roomName,
-      type: type,
-      status: "started",
-      started_by: profile.id,
-    }).then(({ error }: { error: any }) => {
-      if (error) {
-        console.error("Error starting call:", error);
-        setIsInCall(false);
-        setCallType(null);
-        setCallRecipient(null);
-      }
-    });
-  };
-
-  const endCall = () => {
-    if (callType && profile?.id) {
-      (supabase.from("calls") as any)
-        .update({
-          status: isInCall ? "ended" : (callRecipient ? "answered" : "missed"),
-          ended_at: new Date().toISOString(),
-        })
-        .eq("room_name", `call-${crypto.randomUUID()}`)
-        .eq("started_by", profile.id)
-        .then(({ error }: { error: any }) => {
-          if (error) {
-            console.error("Error ending call:", error);
-          }
-        });
-    }
-
-    setIsInCall(false);
-    setCallType(null);
-    setCallRecipient(null);
-  };
-
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-app)]">
       <div className="flex items-center justify-between border-b border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] p-4">
-        <h1 className="text-xl font-semibold text-[var(--color-tx-primary)]">Llamadas</h1>
-        <div className="flex gap-2">
-          <button className="rounded-full bg-[var(--color-wa-green)] p-2 text-white hover:bg-[var(--color-wa-green-dark)]">
-            <Phone className="h-5 w-5" />
-          </button>
-          <button className="rounded-full bg-[var(--color-wa-green)] p-2 text-white hover:bg-[var(--color-wa-green-dark)]">
-            <Video className="h-5 w-5" />
-          </button>
+        <div className="flex items-center gap-3">
+          {isInCall && (
+            <button
+              onClick={() => {
+                setIsInCall(false);
+                setCallType(null);
+                setCallRecipient(null);
+                setActiveCallId(null);
+              }}
+              className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          )}
+          <h1 className="text-xl font-semibold text-[var(--color-tx-primary)]">
+            {isInCall ? (callType === "video" ? "Video Llamada" : "Llamada") : "Llamadas"}
+          </h1>
         </div>
       </div>
 
@@ -168,9 +178,11 @@ export default function CallsPage() {
         <div className="flex flex-1 flex-col items-center justify-center bg-[var(--color-bg-app)] p-8">
           <div className="relative mb-8">
             {callRecipient.avatar_url ? (
-              <img
+              <Image
                 src={callRecipient.avatar_url}
                 alt={callRecipient.display_name}
+                width={128}
+                height={128}
                 className="h-32 w-32 rounded-full object-cover"
               />
             ) : (
@@ -181,73 +193,90 @@ export default function CallsPage() {
                 {callRecipient.display_name.charAt(0).toUpperCase()}
               </div>
             )}
+            <div className="absolute -bottom-2 -right-2 rounded-full bg-green-500 p-2">
+              <Phone className="h-4 w-4 text-white" />
+            </div>
           </div>
           <h2 className="mb-2 text-xl font-medium text-[var(--color-tx-primary)]">
             {callRecipient.display_name || callRecipient.username}
           </h2>
-          <p className="mb-8 text-[var(--color-tx-secondary)]">
+          <p className="mb-4 text-sm text-[var(--color-tx-secondary)]">
             {callType === "audio" ? "Llamada de voz" : "Llamada de video"}
+          </p>
+          <p className="mb-8 text-[var(--color-wa-green)]">
+            Conectando...
           </p>
           <div className="flex gap-6">
             <button
-              onClick={endCall}
-              className="rounded-full bg-red-500 p-4 text-white hover:bg-red-600"
+              onClick={() => endCallMutation.mutate()}
+              className="rounded-full bg-red-500 p-4 text-white hover:bg-red-600 transition-colors"
             >
               <XCircle className="h-8 w-8" />
             </button>
-            {callType === "video" && (
-              <button className="rounded-full bg-[var(--color-bg-panel)] p-4 text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]">
-                <Video className="h-8 w-8" />
-              </button>
-            )}
           </div>
+          <p className="mt-4 text-xs text-[var(--color-tx-tertiary)]">
+            Llamada de demostración — sin conexión real
+          </p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4">
           <div className="mb-4 rounded-lg bg-[var(--color-bg-panel)] p-4">
-            <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--color-tx-tertiary)]">Contactos recientes</h2>
+            <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--color-tx-tertiary)]">Contactos</h2>
             <div className="space-y-2">
-              {profile && (
-                <div className="flex items-center justify-between rounded-lg p-3 hover:bg-[var(--color-bg-panel-2)]">
-                  <div className="flex items-center gap-3">
-                    <div className="relative h-12 w-12">
-                      {profile.avatar_url ? (
-                        <img
-                          src={profile.avatar_url}
-                          alt={profile.display_name}
-                          className="h-full w-full rounded-full object-cover"
-                        />
-                      ) : (
-                        <div
-                          className="flex h-full w-full items-center justify-center rounded-full text-sm font-medium text-white"
-                          style={{ backgroundColor: "#3b82f6" }}
-                        >
-                          {profile.display_name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
+              {contacts.length === 0 ? (
+                <p className="text-sm text-[var(--color-tx-tertiary)] text-center py-2">
+                  No hay contactos disponibles
+                </p>
+              ) : (
+                contacts.map((contact) => (
+                  <div
+                    key={contact.id}
+                    className="flex items-center justify-between rounded-lg p-3 hover:bg-[var(--color-bg-panel-2)] transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-12 w-12 flex-shrink-0">
+                        {contact.avatar_url ? (
+                          <Image
+                            src={contact.avatar_url}
+                            alt={contact.display_name}
+                            width={48}
+                            height={48}
+                            className="h-full w-full rounded-full object-cover"
+                          />
+                        ) : (
+                          <div
+                            className="flex h-full w-full items-center justify-center rounded-full text-sm font-medium text-white"
+                            style={{ backgroundColor: "#3b82f6" }}
+                          >
+                            {(contact.display_name || contact.username || "?").charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[var(--color-tx-primary)]">
+                          {contact.display_name || contact.username}
+                        </p>
+                        <p className="text-xs text-[var(--color-tx-tertiary)]">@{contact.username}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--color-tx-primary)]">
-                        {profile.display_name || profile.username}
-                      </p>
-                      <p className="text-xs text-[var(--color-tx-tertiary)]">Tú</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => startCallMutation.mutate({ type: "audio", recipient: contact })}
+                        disabled={startCallMutation.isPending}
+                        className="rounded-full p-2 text-[var(--color-wa-green)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                      >
+                        <Phone className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => startCallMutation.mutate({ type: "video", recipient: contact })}
+                        disabled={startCallMutation.isPending}
+                        className="rounded-full p-2 text-[var(--color-wa-green)] hover:bg-[var(--color-bg-hover)] transition-colors"
+                      >
+                        <Video className="h-5 w-5" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => startCall("audio", profile)}
-                      className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
-                    >
-                      <Phone className="h-5 w-5" />
-                    </button>
-                    <button
-                      onClick={() => startCall("video", profile)}
-                      className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
-                    >
-                      <Video className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
+                ))
               )}
             </div>
           </div>
@@ -266,18 +295,11 @@ export default function CallsPage() {
             <div className="space-y-2">
               {calls.map((call) => {
                 const isOutgoing = call.started_by === profile?.id;
-                const otherParty = isOutgoing
-                  ? call.chat_id
-                    ? null
-                    : null
-                  : call.started_by === profile?.id
-                    ? null
-                    : call.started_by;
 
                 return (
                   <div
                     key={call.id}
-                    className="flex items-center justify-between rounded-lg bg-[var(--color-bg-panel)] p-3 hover:bg-[var(--color-bg-panel-2)]"
+                    className="flex items-center justify-between rounded-lg bg-[var(--color-bg-panel)] p-3 hover:bg-[var(--color-bg-panel-2)] transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <div className="rounded-full bg-[var(--color-bg-panel-2)] p-2">
@@ -285,14 +307,14 @@ export default function CallsPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-[var(--color-tx-primary)]">
-                          {isOutgoing ? "Tú" : otherParty ? "Usuario" : "Desconocido"}
+                          {isOutgoing ? "Tú" : "Contacto"}
                         </p>
                         <div className="flex items-center gap-1 text-xs text-[var(--color-tx-tertiary)]">
                           <Clock className="h-3 w-3" />
                           <span>{formatTimeAgo(call.started_at)}</span>
                           {getCallDuration(call) && (
                             <>
-                              <span>•</span>
+                              <span>·</span>
                               <span>{getCallDuration(call)}</span>
                             </>
                           )}
@@ -304,9 +326,6 @@ export default function CallsPage() {
                       <span className="text-xs text-[var(--color-tx-secondary)]">
                         {getCallStatusText(call.status)}
                       </span>
-                      <button className="text-[var(--color-tx-tertiary)] hover:text-[var(--color-tx-primary)]">
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
                     </div>
                   </div>
                 );
