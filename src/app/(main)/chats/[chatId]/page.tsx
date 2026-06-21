@@ -4,10 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { type Profile, type Message, type Chat, type ChatMember } from "@/types/database";
 import { formatTime, cn } from "@/lib/utils";
-import { Send, Paperclip, ArrowLeft, X, Check, MessageCircle, Reply } from "lucide-react";
+import { Send, Paperclip, ArrowLeft, X, Check, MessageCircle, Reply, Users } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { VoiceRecorder, AudioPlayer } from "@/components/voice-message";
+import { MessageSearch } from "@/components/message-search";
+import { GroupAdmin } from "@/components/group-admin";
 
 interface ChatPageProps {
   params: { chatId: string };
@@ -19,8 +22,11 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [message, setMessage] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showGroupAdmin, setShowGroupAdmin] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const queryClient = useQueryClient();
   const supabase = createClient();
@@ -45,31 +51,24 @@ export default function ChatPage({ params }: ChatPageProps) {
     queryFn: async () => {
       const { data, error } = await (supabase
         .from("chats")
-        .select(
-          `*,\n         chat_members!inner(*),\n         profiles!chat_members.user_id(*)`
-        )
+        .select(`*, chat_members!inner(*), profiles!chat_members.user_id(*)`)
         .eq("id", chatId)
         .single() as any);
-
       if (error) throw error;
       return data as Chat & { profiles: Profile[] };
     },
     enabled: !!chatId,
   });
 
-  const { data: messages = [], refetch: refetchMessages } = useQuery({
+  const { data: messages = [] } = useQuery({
     queryKey: ["messages", chatId],
     queryFn: async () => {
       const { data, error } = await (supabase
         .from("messages")
-        .select(
-          `*,\n         profiles!sender_id(*)`,
-          { head: false }
-        )
+        .select(`*, profiles!sender_id(*)`)
         .eq("chat_id", chatId)
         .order("created_at", { ascending: true })
-        .limit(50) as any);
-
+        .limit(200) as any);
       if (error) throw error;
       return data as (Message & { profiles: Profile })[];
     },
@@ -81,11 +80,8 @@ export default function ChatPage({ params }: ChatPageProps) {
     queryFn: async () => {
       const { data, error } = await (supabase
         .from("chat_members")
-        .select(
-          `*,\n         profiles!user_id(*)`
-        )
+        .select(`*, profiles!user_id(*)`)
         .eq("chat_id", chatId) as any);
-
       if (error) throw error;
       return data as (ChatMember & { profiles: Profile })[];
     },
@@ -97,22 +93,14 @@ export default function ChatPage({ params }: ChatPageProps) {
       .channel(`messages:${chatId}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `chat_id=eq.${chatId}`,
-        },
+        { event: "INSERT", schema: "public", table: "messages", filter: `chat_id=eq.${chatId}` },
         () => {
           queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
           queryClient.invalidateQueries({ queryKey: ["chats"] });
         }
       )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [chatId, queryClient, supabase]);
 
   const sendMessageMutation = useMutation({
@@ -130,17 +118,9 @@ export default function ChatPage({ params }: ChatPageProps) {
         setIsUploading(true);
         const fileExt = file.name.split(".").pop();
         const filePath = `${crypto.randomUUID()}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("chat-files")
-          .upload(filePath, file);
-
+        const { error: uploadError } = await supabase.storage.from("chat-files").upload(filePath, file);
         if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from("chat-files")
-          .getPublicUrl(filePath);
-
+        const { data: { publicUrl } } = supabase.storage.from("chat-files").getPublicUrl(filePath);
         fileUrl = publicUrl;
         fileName = file.name;
         fileSize = file.size;
@@ -158,7 +138,6 @@ export default function ChatPage({ params }: ChatPageProps) {
       };
 
       const { error } = await (supabase.from("messages") as any).insert(messageData);
-
       if (error) throw error;
 
       await (supabase.from("chat_members") as any)
@@ -176,28 +155,28 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   const handleSendMessage = () => {
     if (!message.trim() && !fileInputRef.current?.files?.length) return;
-
     const file = fileInputRef.current?.files?.[0];
     if (file) {
-      sendMessageMutation.mutate({
-        content: null,
-        type: file.type.startsWith("image/") ? "image" : "file",
-        file,
-        replyTo: replyingTo?.id,
-      });
+      sendMessageMutation.mutate({ content: null, type: file.type.startsWith("image/") ? "image" : "file", file, replyTo: replyingTo?.id });
       if (fileInputRef.current) fileInputRef.current.value = "";
     } else {
-      sendMessageMutation.mutate({
-        content: message.trim(),
-        type: "text",
-        replyTo: replyingTo?.id,
-      });
+      sendMessageMutation.mutate({ content: message.trim(), type: "text", replyTo: replyingTo?.id });
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      handleSendMessage();
+  const handleVoiceRecord = (blob: Blob) => {
+    const file = new File([blob], `voice-${Date.now()}.webm`, { type: "audio/webm;codecs=opus" });
+    sendMessageMutation.mutate({ content: null, type: "audio", file, replyTo: replyingTo?.id });
+  };
+
+  const jumpToMessage = (messageId: string) => {
+    const el = messageRefs.current.get(messageId);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-[var(--color-wa-green)]", "ring-offset-2", "ring-offset-[var(--color-bg-app)]");
+      setTimeout(() => {
+        el.classList.remove("ring-2", "ring-[var(--color-wa-green)]", "ring-offset-2", "ring-offset-[var(--color-bg-app)]");
+      }, 2000);
     }
   };
 
@@ -214,49 +193,45 @@ export default function ChatPage({ params }: ChatPageProps) {
   }
 
   const otherMembers = chatMembers.filter((m) => m.user_id !== profile?.id);
-  const displayName = chat?.type === "direct" 
+  const displayName = chat?.type === "direct"
     ? otherMembers[0]?.profiles?.display_name || otherMembers[0]?.profiles?.username || "Unknown"
     : chat?.name || "Grupo sin nombre";
-  const avatarUrl = chat?.type === "direct" 
+  const avatarUrl = chat?.type === "direct"
     ? otherMembers[0]?.profiles?.avatar_url || null
     : chat?.avatar_url || null;
+  const currentMember = chatMembers.find((m) => m.user_id === profile?.id);
+  const isAdmin = currentMember?.role === "admin";
 
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-app)]">
       <div className="flex items-center justify-between border-b border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] p-3">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push("/chats")}
-            className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]"
-          >
+          <button onClick={() => router.push("/chats")} className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="relative h-10 w-10">
             {avatarUrl ? (
-              <Image
-                src={avatarUrl}
-                alt={displayName}
-                width={40}
-                height={40}
-                className="h-full w-full rounded-full object-cover"
-              />
+              <Image src={avatarUrl} alt={displayName} width={40} height={40} className="h-full w-full rounded-full object-cover" />
             ) : (
-              <div
-                className="flex h-full w-full items-center justify-center rounded-full text-sm font-medium text-white"
-                style={{ backgroundColor: "#3b82f6" }}
-              >
+              <div className="flex h-full w-full items-center justify-center rounded-full text-sm font-medium text-white" style={{ backgroundColor: "#3b82f6" }}>
                 {displayName.charAt(0).toUpperCase()}
               </div>
             )}
           </div>
           <div>
-            <h2 className="text-sm font-medium text-[var(--color-tx-primary)]">
-              {displayName}
-            </h2>
+            <h2 className="text-sm font-medium text-[var(--color-tx-primary)]">{displayName}</h2>
             <p className="text-xs text-[var(--color-tx-tertiary)]">
-              {chat?.type === "direct" ? "Directo" : "Grupo"}
+              {chat?.type === "direct" ? "Directo" : `Grupo · ${chatMembers.length} miembros`}
             </p>
           </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <MessageSearch chatId={chatId} onJumpToMessage={jumpToMessage} onClose={() => setShowSearch(false)} />
+          {chat?.type === "group" && (
+            <button onClick={() => setShowGroupAdmin(true)} className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]">
+              <Users className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -277,7 +252,11 @@ export default function ChatPage({ params }: ChatPageProps) {
               const isSystem = msg.type === "system";
 
               return (
-                <div key={msg.id} className={cn("flex", isOwn ? "justify-end" : "justify-start")}>
+                <div
+                  key={msg.id}
+                  ref={(el) => { if (el) messageRefs.current.set(msg.id, el); }}
+                  className={cn("flex transition-all duration-300", isOwn ? "justify-end" : "justify-start")}
+                >
                   {!isOwn && isSystem ? (
                     <div className="mx-auto rounded-full bg-[var(--color-bg-panel-2)] px-3 py-1 text-xs text-[var(--color-tx-tertiary)]">
                       {msg.content}
@@ -311,44 +290,34 @@ export default function ChatPage({ params }: ChatPageProps) {
 
                         {msg.type === "image" && msg.file_url && (
                           <div className="mb-2">
-                            <Image
-                              src={msg.file_url}
-                              alt={msg.file_name || "Imagen"}
-                              width={300}
-                              height={300}
-                              className="max-h-64 rounded-lg object-cover"
-                            />
+                            <Image src={msg.file_url} alt={msg.file_name || "Imagen"} width={300} height={300} className="max-h-64 rounded-lg object-cover" />
                           </div>
                         )}
 
                         {msg.type === "file" && msg.file_name && (
                           <div className="flex items-center gap-2">
                             <Paperclip className="h-4 w-4" />
-                            <a
-                              href={msg.file_url || "#"}
-                              download={msg.file_name}
-                              className="text-sm font-medium underline hover:no-underline"
-                            >
+                            <a href={msg.file_url || "#"} download={msg.file_name} className="text-sm font-medium underline hover:no-underline">
                               {msg.file_name}
                             </a>
                           </div>
                         )}
 
-                        {msg.content && (
-                          <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                            {msg.content}
-                          </p>
+                        {msg.type === "audio" && msg.file_url && (
+                          <div className="min-w-[200px]">
+                            <AudioPlayer src={msg.file_url} />
+                          </div>
+                        )}
+
+                        {msg.content && msg.type !== "audio" && (
+                          <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
                         )}
 
                         <div className="mt-1 flex items-center justify-between gap-1 text-xs opacity-70">
                           <span>{formatTime(msg.created_at)}</span>
-                          {isOwn && msg.type === "text" && (
+                          {isOwn && (
                             <span className="flex items-center gap-0.5">
-                              {msg.deleted_at ? (
-                                <X className="h-3 w-3" />
-                              ) : (
-                                <Check className="h-3 w-3" />
-                              )}
+                              {msg.deleted_at ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}
                             </span>
                           )}
                         </div>
@@ -357,7 +326,7 @@ export default function ChatPage({ params }: ChatPageProps) {
                       {replyingTo?.id === msg.id && (
                         <div className="mt-1 rounded border-l-2 border-[var(--color-wa-green)] bg-[var(--color-bg-panel-2)] pl-2 text-xs text-[var(--color-tx-secondary)]">
                           <p className="font-medium">Respuesta a {sender.display_name || sender.username}:</p>
-                          <p className="truncate">{msg.content || "[Archivo]"}</p>
+                          <p className="truncate">{msg.content || msg.file_name || "[Archivo]"}</p>
                         </div>
                       )}
                     </div>
@@ -374,14 +343,11 @@ export default function ChatPage({ params }: ChatPageProps) {
         <div className="border-t border-[var(--color-border-wa)] bg-[var(--color-bg-panel-2)] p-2">
           <div className="flex items-center justify-between px-3 py-1">
             <span className="text-xs text-[var(--color-tx-tertiary)]">Respondiendo</span>
-            <button
-              onClick={() => setReplyingTo(null)}
-              className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]"
-            >
+            <button onClick={() => setReplyingTo(null)} className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]">
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="px-3 py-1 text-sm text-[var(--color-tx-primary)] truncate">
+          <div className="truncate px-3 py-1 text-sm text-[var(--color-tx-primary)]">
             {replyingTo.content || replyingTo.file_name || "[Archivo]"}
           </div>
         </div>
@@ -389,32 +355,19 @@ export default function ChatPage({ params }: ChatPageProps) {
 
       <div className="border-t border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] p-3">
         <div className="flex items-end gap-2">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
-          >
+          <button onClick={() => fileInputRef.current?.click()} className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]">
             <Paperclip className="h-5 w-5" />
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-            accept="image/*,.pdf,.doc,.docx,.txt"
-          />
+          <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleSendMessage(); }} accept="image/*,.pdf,.doc,.docx,.txt" />
+
+          <VoiceRecorder onRecord={handleVoiceRecord} onCancel={() => {}} />
+
           <div className="relative flex-1">
             <input
               type="text"
               value={message}
-              onChange={(e) => {
-                setMessage(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
               placeholder="Escribe un mensaje..."
               className="w-full rounded-full border border-[var(--color-border-wa)] bg-[var(--color-bg-input)] px-4 py-2 text-sm text-[var(--color-tx-primary)] placeholder:text-[var(--color-tx-tertiary)] focus:border-[var(--color-wa-green)] focus:outline-none"
             />
@@ -428,6 +381,10 @@ export default function ChatPage({ params }: ChatPageProps) {
           </button>
         </div>
       </div>
+
+      {showGroupAdmin && chat?.type === "group" && (
+        <GroupAdmin chatId={chatId} currentUserId={profile?.id || ""} onClose={() => setShowGroupAdmin(false)} />
+      )}
     </div>
   );
 }
