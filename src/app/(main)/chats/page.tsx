@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { type Profile, type Chat, type ChatMember } from "@/types/database";
 import { formatChatListTime } from "@/lib/utils";
-import { MessageCircle, Search, Plus, Phone, Video, Users, MoreVertical, Edit3, Trash2 } from "lucide-react";
+import { MessageCircle, Search, Plus, Users, X, Phone } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +15,9 @@ export default function ChatsPage() {
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [newChatName, setNewChatName] = useState("");
   const [newChatType, setNewChatType] = useState<"direct" | "group">("direct");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  const userSearchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
   const supabase = createClient();
@@ -32,6 +35,29 @@ export default function ChatsPage() {
       if (error) throw error;
       return data as Profile;
     },
+  });
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .neq("id", profile?.id || "")
+        .limit(50);
+      if (error) throw error;
+      return (data || []) as Profile[];
+    },
+    enabled: !!profile,
+  });
+
+  const filteredUsers = allUsers.filter((u) => {
+    const q = userSearchQuery.toLowerCase();
+    return (
+      u.display_name?.toLowerCase().includes(q) ||
+      u.username?.toLowerCase().includes(q) ||
+      u.about?.toLowerCase().includes(q)
+    );
   });
 
   const { data: chats = [], isLoading } = useQuery({
@@ -84,6 +110,19 @@ export default function ChatsPage() {
   const createChatMutation = useMutation({
     mutationFn: async () => {
       if (!profile) return null;
+      if (newChatType === "direct" && !selectedUser) return null;
+
+      const existingChat = chats.find((c) => {
+        if (c.type !== "direct") return false;
+        const chatMembers = (c as any).chat_members || [];
+        const otherIds = chatMembers
+          .filter((m: ChatMember) => m.user_id !== profile.id)
+          .map((m: ChatMember) => m.user_id);
+        return otherIds.includes(selectedUser!.id);
+      });
+
+      if (existingChat) return existingChat.id;
+
       const chatId = crypto.randomUUID();
       const { error } = await (supabase.from("chats") as any).insert({
         id: chatId,
@@ -97,7 +136,7 @@ export default function ChatsPage() {
       if (newChatType === "direct") {
         await (supabase.from("chat_members") as any).insert([
           { chat_id: chatId, user_id: profile.id },
-          { chat_id: chatId, user_id: newChatName },
+          { chat_id: chatId, user_id: selectedUser!.id },
         ]);
       } else {
         await (supabase.from("chat_members") as any).insert([
@@ -111,13 +150,42 @@ export default function ChatsPage() {
       queryClient.invalidateQueries({ queryKey: ["chats"] });
       setIsCreatingChat(false);
       setNewChatName("");
+      setSelectedUser(null);
+      setUserSearchQuery("");
       if (chatId) router.push(`/chats/${chatId}`);
     },
   });
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userSearchRef.current && !userSearchRef.current.contains(event.target as Node)) {
+        setUserSearchQuery("");
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const filteredChats = chats.filter((chat) =>
     chat.display_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const canCreate =
+    newChatType === "group" ? !!newChatName.trim() : !!selectedUser;
+
+  const handleStartCreate = () => {
+    setIsCreatingChat(true);
+    setSelectedUser(null);
+    setUserSearchQuery("");
+    setNewChatName("");
+  };
+
+  const handleCancelCreate = () => {
+    setIsCreatingChat(false);
+    setNewChatName("");
+    setSelectedUser(null);
+    setUserSearchQuery("");
+  };
 
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-app)]">
@@ -130,7 +198,7 @@ export default function ChatsPage() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => setIsCreatingChat(true)}
+            onClick={handleStartCreate}
             className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
           >
             <Plus className="h-5 w-5" />
@@ -190,25 +258,68 @@ export default function ChatsPage() {
             )}
 
             {newChatType === "direct" && (
-              <input
-                type="text"
-                placeholder="ID de usuario (email)"
-                value={newChatName}
-                onChange={(e) => setNewChatName(e.target.value)}
-                className="w-full rounded-md border border-[var(--color-border-wa)] bg-[var(--color-bg-input)] px-3 py-2 text-sm text-[var(--color-tx-primary)] focus:border-[var(--color-wa-green)] focus:outline-none"
-              />
+              <div ref={userSearchRef} className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-tx-tertiary)]" />
+                  <input
+                    type="text"
+                    placeholder="Buscar usuario..."
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    className="w-full rounded-md border border-[var(--color-border-wa)] bg-[var(--color-bg-input)] px-3 py-2 pl-10 text-sm text-[var(--color-tx-primary)] placeholder:text-[var(--color-tx-tertiary)] focus:border-[var(--color-wa-green)] focus:outline-none"
+                  />
+                </div>
+                {userSearchQuery && filteredUsers.length > 0 && (
+                  <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] shadow-lg">
+                    {filteredUsers.map((u) => (
+                      <button
+                        key={u.id}
+                        onClick={() => {
+                          setSelectedUser(u);
+                          setUserSearchQuery("");
+                        }}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-sm text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]"
+                      >
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-500 text-xs font-medium text-white">
+                          {(u.display_name || u.username || "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="text-left">
+                          <div className="font-medium">{u.display_name || u.username}</div>
+                          <div className="text-xs text-[var(--color-tx-tertiary)]">@{u.username}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedUser && (
+                  <div className="mt-2 flex items-center gap-2 rounded-md bg-[var(--color-wa-green)]/10 p-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-500 text-xs font-medium text-white">
+                      {(selectedUser.display_name || selectedUser.username || "?").charAt(0).toUpperCase()}
+                    </div>
+                    <span className="flex-1 text-sm text-[var(--color-tx-primary)]">
+                      {selectedUser.display_name || selectedUser.username}
+                    </span>
+                    <button
+                      onClick={() => setSelectedUser(null)}
+                      className="rounded-full p-1 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="flex gap-2">
               <button
-                onClick={() => setIsCreatingChat(false)}
+                onClick={handleCancelCreate}
                 className="flex-1 rounded-md bg-[var(--color-bg-hover)] px-3 py-2 text-sm font-medium text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-panel-2)]"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => createChatMutation.mutate()}
-                disabled={createChatMutation.isPending || !newChatName}
+                disabled={createChatMutation.isPending || !canCreate}
                 className="flex-1 rounded-md bg-[var(--color-wa-green)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-wa-green-dark)] disabled:opacity-50"
               >
                 {createChatMutation.isPending ? "Creando..." : "Crear"}

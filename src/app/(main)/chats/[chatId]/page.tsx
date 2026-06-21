@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { type Profile, type Message, type Chat, type ChatMember } from "@/types/database";
 import { formatTime, cn } from "@/lib/utils";
-import { Send, Paperclip, Smile, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Check, MessageCircle } from "lucide-react";
+import { Send, Paperclip, Smile, Phone, Video, MoreVertical, ArrowLeft, X, CheckCheck, Check, MessageCircle, Reply } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 interface ChatPageProps {
@@ -14,20 +15,15 @@ interface ChatPageProps {
 
 export default function ChatPage({ params }: ChatPageProps) {
   const { chatId } = params;
+  const router = useRouter();
   const [message, setMessage] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const queryClient = useQueryClient();
   const supabase = createClient();
-
-  const db = {
-    from: (table: string) => (supabase.from as any)(table),
-  };
 
   const { data: profile } = useQuery({
     queryKey: ["profile"],
@@ -96,6 +92,29 @@ export default function ChatPage({ params }: ChatPageProps) {
     enabled: !!chatId,
   });
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`messages:${chatId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `chat_id=eq.${chatId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
+          queryClient.invalidateQueries({ queryKey: ["chats"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [chatId, queryClient, supabase]);
+
   const sendMessageMutation = useMutation({
     mutationFn: async ({ content, type, file, replyTo }: {
       content?: string | null;
@@ -138,7 +157,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         reply_to_id: replyTo || null,
       };
 
-      const { error } = await db.from("messages").insert(messageData);
+      const { error } = await (supabase.from("messages") as any).insert(messageData);
 
       if (error) throw error;
 
@@ -152,8 +171,6 @@ export default function ChatPage({ params }: ChatPageProps) {
       queryClient.invalidateQueries({ queryKey: ["chats"] });
       setMessage("");
       setReplyingTo(null);
-      setIsTyping(false);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     },
   });
 
@@ -178,25 +195,6 @@ export default function ChatPage({ params }: ChatPageProps) {
     }
   };
 
-  const handleTyping = () => {
-    if (!isTyping) {
-      setIsTyping(true);
-      db.from("messages")
-        .insert({
-          chat_id: chatId,
-          sender_id: profile?.id,
-          type: "system",
-          content: `${profile?.display_name || profile?.username} está escribiendo...`,
-        })
-        .catch(() => {});
-    }
-
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      setIsTyping(false);
-    }, 3000);
-  };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       handleSendMessage();
@@ -206,12 +204,6 @@ export default function ChatPage({ params }: ChatPageProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    };
-  }, []);
 
   if (isLoading) {
     return (
@@ -233,7 +225,10 @@ export default function ChatPage({ params }: ChatPageProps) {
     <div className="flex h-full flex-col bg-[var(--color-bg-app)]">
       <div className="flex items-center justify-between border-b border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] p-3">
         <div className="flex items-center gap-3">
-          <button className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]">
+          <button
+            onClick={() => router.push("/chats")}
+            className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]"
+          >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="relative h-10 w-10">
@@ -300,7 +295,7 @@ export default function ChatPage({ params }: ChatPageProps) {
                       {msg.content}
                     </div>
                   ) : (
-                    <div className={cn("max-w-xs md:max-w-md lg:max-w-lg", isOwn ? "text-right" : "text-left")}>
+                    <div className={cn("group relative max-w-xs md:max-w-md lg:max-w-lg", isOwn ? "text-right" : "text-left")}>
                       {!isOwn && !isSystem && (
                         <p className="mb-1 text-xs font-medium text-[var(--color-tx-secondary)]">
                           {sender.display_name || sender.username}
@@ -317,6 +312,15 @@ export default function ChatPage({ params }: ChatPageProps) {
                               : "bubble-tail-in bg-[var(--color-bubble-in)] text-[var(--color-tx-primary)]"
                         )}
                       >
+                        {!isOwn && !isSystem && (
+                          <button
+                            onClick={() => setReplyingTo(msg)}
+                            className="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100"
+                          >
+                            <Reply className="h-4 w-4 text-[var(--color-tx-tertiary)] hover:text-[var(--color-tx-primary)]" />
+                          </button>
+                        )}
+
                         {msg.type === "image" && msg.file_url && (
                           <div className="mb-2">
                             <Image
@@ -350,7 +354,7 @@ export default function ChatPage({ params }: ChatPageProps) {
 
                         <div className="mt-1 flex items-center justify-between gap-1 text-xs opacity-70">
                           <span>{formatTime(msg.created_at)}</span>
-                              {isOwn && msg.type === "text" && (
+                          {isOwn && msg.type === "text" && (
                             <span className="flex items-center gap-0.5">
                               {msg.deleted_at ? (
                                 <X className="h-3 w-3" />
@@ -381,7 +385,7 @@ export default function ChatPage({ params }: ChatPageProps) {
       {replyingTo && (
         <div className="border-t border-[var(--color-border-wa)] bg-[var(--color-bg-panel-2)] p-2">
           <div className="flex items-center justify-between px-3 py-1">
-                    <span className="text-xs text-[var(--color-tx-tertiary)]">Respondiendo</span>
+            <span className="text-xs text-[var(--color-tx-tertiary)]">Respondiendo</span>
             <button
               onClick={() => setReplyingTo(null)}
               className="text-[var(--color-tx-secondary)] hover:text-[var(--color-tx-primary)]"
@@ -398,12 +402,6 @@ export default function ChatPage({ params }: ChatPageProps) {
       <div className="border-t border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] p-3">
         <div className="flex items-end gap-2">
           <button
-            onClick={() => setReplyingTo(null)}
-            className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <button
             onClick={() => fileInputRef.current?.click()}
             className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
           >
@@ -417,7 +415,7 @@ export default function ChatPage({ params }: ChatPageProps) {
             accept="image/*,.pdf,.doc,.docx,.txt"
           />
           <button
-            onClick={() => setReplyingTo(null)}
+            onClick={() => {}}
             className="rounded-full p-2 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)]"
           >
             <Smile className="h-5 w-5" />
@@ -428,7 +426,6 @@ export default function ChatPage({ params }: ChatPageProps) {
               value={message}
               onChange={(e) => {
                 setMessage(e.target.value);
-                handleTyping();
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
