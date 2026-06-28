@@ -1,7 +1,7 @@
 {
   "name": "mensajeria",
-  "version": "1.0.0",
-  "description": "App de mensajeria web con user/contraseña y conexion por codigo/enlace",
+  "version": "2.0.0",
+  "description": "App de mensajeria web en tiempo real con autenticacion, salas por codigo, typing indicators, presencia y paginacion",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,6 +14,7 @@
     "express-rate-limit": "^7.5.0",
     "express-session": "^1.18.0",
     "helmet": "^8.0.0",
+    "sanitize-html": "^2.17.5",
     "socket.io": "^4.7.5"
   }
 }

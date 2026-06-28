@@ -10,7 +10,10 @@
     <header class="chat-header">
       <div class="chat-header-main">
         <a href="/dashboard.html" class="back-link" aria-label="Volver al panel">&larr;</a>
-        <h1 id="chat-title" class="chat-title">Cargando...</h1>
+        <div>
+          <h1 id="chat-title" class="chat-title">Cargando...</h1>
+          <div id="online-count" class="online-count"></div>
+        </div>
       </div>
       <div class="share-box" aria-label="Compartir chat">
         <div class="share-row">
@@ -25,7 +28,13 @@
       </div>
     </header>
 
-    <main id="messages" class="messages" aria-live="polite"></main>
+    <main id="messages" class="messages" aria-live="polite">
+      <div id="load-more-container" class="load-more-container">
+        <button id="load-more-btn" class="btn-load-more">Cargar mas mensajes</button>
+      </div>
+    </main>
+
+    <div id="typing-indicator" class="typing-indicator"></div>
 
     <form id="composer" class="composer" autocomplete="off">
       <input id="message-input" type="text" maxlength="2000" placeholder="Escribe un mensaje..." required />

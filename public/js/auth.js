@@ -9,6 +9,11 @@
 
   let mode = 'login';
 
+  function getCsrfToken() {
+    const match = document.cookie.match(/csrf_token=([^;]+)/);
+    return match ? match[1] : null;
+  }
+
   function switchTab(m) {
     mode = m;
     tabLogin.classList.toggle('active', m === 'login');
@@ -27,7 +32,7 @@
 
   async function checkSession() {
     try {
-      const res = await fetch('/api/me');
+      const res = await fetch('/api/me', { credentials: 'same-origin' });
       const data = await res.json();
       if (data.user) window.location.href = '/dashboard.html';
     } catch (_) {}
@@ -50,9 +55,14 @@
 
     try {
       const endpoint = mode === 'login' ? '/api/login' : '/api/register';
+      const headers = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
+        credentials: 'same-origin',
         body: JSON.stringify({ username, password })
       });
       const data = await res.json();

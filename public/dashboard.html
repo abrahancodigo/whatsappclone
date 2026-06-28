@@ -35,137 +35,16 @@
     <div class="panel">
       <h2>Mis chats</h2>
       <ul id="chat-list" class="chat-list"></ul>
-      <p id="empty-msg" class="empty" style="display:none;">No tienes chats ainda. Crea uno o unete con un codigo.</p>
+      <p id="empty-msg" class="empty" style="display:none;">No tienes chats aun. Crea uno o unete con un codigo.</p>
+    </div>
+
+    <div class="panel panel-danger">
+      <h2>Zona de peligro</h2>
+      <p class="danger-text">Eliminar tu cuenta borrara todos tus datos, chats creados y mensajes de forma permanente.</p>
+      <button id="delete-account-btn" class="btn-small btn-danger">Eliminar mi cuenta</button>
     </div>
   </div>
 
-  <script>
-    (() => {
-      const usernameDisplay = document.getElementById('username-display');
-      const logoutBtn = document.getElementById('logout-btn');
-      const createName = document.getElementById('create-name');
-      const createBtn = document.getElementById('create-btn');
-      const joinCode = document.getElementById('join-code');
-      const joinBtn = document.getElementById('join-btn');
-      const chatList = document.getElementById('chat-list');
-      const emptyMsg = document.getElementById('empty-msg');
-
-      let currentUser = null;
-
-      async function init() {
-        try {
-          const res = await fetch('/api/me');
-          const data = await res.json();
-          if (!data.user) {
-            window.location.href = '/';
-            return;
-          }
-          currentUser = data.user;
-          usernameDisplay.textContent = currentUser.username;
-          loadChats();
-        } catch (_) {
-          window.location.href = '/';
-        }
-      }
-
-      async function loadChats() {
-        try {
-          const res = await fetch('/api/chats');
-          const data = await res.json();
-          renderChats(data.chats);
-        } catch (_) {}
-      }
-
-      function renderChats(chats) {
-        chatList.innerHTML = '';
-        if (!chats.length) {
-          emptyMsg.style.display = 'block';
-          return;
-        }
-        emptyMsg.style.display = 'none';
-        chats.forEach(c => {
-          const li = document.createElement('li');
-          li.innerHTML = `
-            <div>
-              <span class="name">${escHtml(c.name)}</span>
-              <span class="meta">&nbsp;&middot; ${c.members} miembro${c.members !== 1 ? 's' : ''}</span>
-            </div>
-            <div class="actions">
-              <code class="code-badge">${escHtml(c.code)}</code>
-              <button class="btn-small go-btn" data-code="${escHtml(c.code)}">Abrir</button>
-            </div>
-          `;
-          chatList.appendChild(li);
-        });
-
-        chatList.querySelectorAll('.go-btn').forEach(btn => {
-          btn.addEventListener('click', () => {
-            window.location.href = `/chat.html?c=${btn.dataset.code}`;
-          });
-        });
-      }
-
-      createBtn.addEventListener('click', async () => {
-        const name = createName.value.trim();
-        if (!name) return;
-        createBtn.disabled = true;
-        try {
-          const res = await fetch('/api/chats', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            alert(data.error || 'Error');
-            return;
-          }
-          createName.value = '';
-          window.location.href = data.link;
-        } catch (_) {
-          alert('Error de conexion');
-        } finally {
-          createBtn.disabled = false;
-        }
-      });
-
-      joinBtn.addEventListener('click', async () => {
-        const code = joinCode.value.trim();
-        if (!code) return;
-        joinBtn.disabled = true;
-        try {
-          const res = await fetch('/api/chats/join', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            alert(data.error || 'Error');
-            return;
-          }
-          joinCode.value = '';
-          window.location.href = data.link;
-        } catch (_) {
-          alert('Error de conexion');
-        } finally {
-          joinBtn.disabled = false;
-        }
-      });
-
-      logoutBtn.addEventListener('click', async () => {
-        await fetch('/api/logout', { method: 'POST' });
-        window.location.href = '/';
-      });
-
-      function escHtml(s) {
-        const d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-      }
-
-      init();
-    })();
-  </script>
+  <script src="/js/dashboard.js"></script>
 </body>
 </html>
