@@ -84,7 +84,21 @@ create index if not exists idx_chat_members_user on public.chat_members(user_id)
 create index if not exists idx_chats_last_msg on public.chats(last_message_at desc);
 
 -- ---------------------------------------------------------------------------
--- 4. MESSAGES
+-- 4. CONTACTS (lista de contactos del usuario)
+-- ---------------------------------------------------------------------------
+create table if not exists public.contacts (
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  contact_id  uuid not null references public.profiles(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (user_id, contact_id),
+  check (user_id <> contact_id)
+);
+
+create index if not exists idx_contacts_user on public.contacts(user_id);
+create index if not exists idx_contacts_contact on public.contacts(contact_id);
+
+-- ---------------------------------------------------------------------------
+-- 5. MESSAGES
 -- ---------------------------------------------------------------------------
 create table if not exists public.messages (
   id          uuid primary key default gen_random_uuid(),
@@ -189,6 +203,7 @@ on conflict (id) do nothing;
 alter table public.profiles       enable row level security;
 alter table public.chats          enable row level security;
 alter table public.chat_members   enable row level security;
+alter table public.contacts       enable row level security;
 alter table public.messages       enable row level security;
 alter table public.statuses       enable row level security;
 alter table public.status_views   enable row level security;
@@ -245,6 +260,19 @@ create policy members_delete on public.chat_members
 drop policy if exists members_update on public.chat_members;
 create policy members_update on public.chat_members
   for update using (user_id = auth.uid());
+
+-- ---- CONTACTS ----
+drop policy if exists contacts_select on public.contacts;
+create policy contacts_select on public.contacts
+  for select using (user_id = auth.uid());
+
+drop policy if exists contacts_insert on public.contacts;
+create policy contacts_insert on public.contacts
+  for insert with check (user_id = auth.uid());
+
+drop policy if exists contacts_delete on public.contacts;
+create policy contacts_delete on public.contacts
+  for delete using (user_id = auth.uid());
 
 -- ---- MESSAGES ----
 drop policy if exists messages_select on public.messages;
@@ -375,6 +403,13 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'calls'
   ) then
     alter publication supabase_realtime add table public.calls;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'contacts'
+  ) then
+    alter publication supabase_realtime add table public.contacts;
   end if;
 end $$;
 

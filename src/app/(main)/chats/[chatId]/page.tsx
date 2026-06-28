@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { type Profile, type Message, type Chat, type ChatMember } from "@/types/database";
 import { formatTime, cn } from "@/lib/utils";
@@ -13,11 +13,11 @@ import { MessageSearch } from "@/components/message-search";
 import { GroupAdmin } from "@/components/group-admin";
 
 interface ChatPageProps {
-  params: { chatId: string };
+  params: Promise<{ chatId: string }>;
 }
 
 export default function ChatPage({ params }: ChatPageProps) {
-  const { chatId } = params;
+  const { chatId } = use(params);
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);

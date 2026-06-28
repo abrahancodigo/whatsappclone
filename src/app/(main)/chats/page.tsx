@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { type Profile, type Chat, type ChatMember } from "@/types/database";
+import { type Profile, type Chat, type ChatMember, type Contact } from "@/types/database";
 import { formatChatListTime } from "@/lib/utils";
 import { MessageCircle, Search, Plus, Users, X, Phone } from "lucide-react";
 import Link from "next/link";
@@ -59,6 +59,24 @@ export default function ChatsPage() {
       u.about?.toLowerCase().includes(q)
     );
   });
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["contacts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("contacts")
+        .select("contact_id")
+        .eq("user_id", profile?.id || "");
+      if (error) throw error;
+      return (data || []) as { contact_id: string }[];
+    },
+    enabled: !!profile,
+  });
+
+  const contactIds = new Set(contacts.map((c) => c.contact_id));
+
+  const contactUsers = filteredUsers.filter((u) => contactIds.has(u.id));
+  const otherUsers = filteredUsers.filter((u) => !contactIds.has(u.id));
 
   const { data: chats = [], isLoading } = useQuery({
     queryKey: ["chats"],
@@ -271,24 +289,58 @@ export default function ChatsPage() {
                 </div>
                 {userSearchQuery && filteredUsers.length > 0 && (
                   <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-[var(--color-border-wa)] bg-[var(--color-bg-panel)] shadow-lg">
-                    {filteredUsers.map((u) => (
-                      <button
-                        key={u.id}
-                        onClick={() => {
-                          setSelectedUser(u);
-                          setUserSearchQuery("");
-                        }}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-sm text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]"
-                      >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-500 text-xs font-medium text-white">
-                          {(u.display_name || u.username || "?").charAt(0).toUpperCase()}
+                    {contactUsers.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 text-xs font-medium text-[var(--color-tx-tertiary)] bg-[var(--color-bg-panel-2)]">
+                          Contactos
                         </div>
-                        <div className="text-left">
-                          <div className="font-medium">{u.display_name || u.username}</div>
-                          <div className="text-xs text-[var(--color-tx-tertiary)]">@{u.username}</div>
-                        </div>
-                      </button>
-                    ))}
+                        {contactUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setUserSearchQuery("");
+                            }}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-sm text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]"
+                          >
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-500 text-xs font-medium text-white">
+                              {(u.display_name || u.username || "?").charAt(0).toUpperCase()}
+                            </div>
+                            <div className="text-left">
+                              <div className="font-medium">{u.display_name || u.username}</div>
+                              <div className="text-xs text-[var(--color-tx-tertiary)]">@{u.username}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {otherUsers.length > 0 && (
+                      <>
+                        {contactUsers.length > 0 && (
+                          <div className="px-3 py-1.5 text-xs font-medium text-[var(--color-tx-tertiary)] bg-[var(--color-bg-panel-2)]">
+                            Otros usuarios
+                          </div>
+                        )}
+                        {otherUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              setSelectedUser(u);
+                              setUserSearchQuery("");
+                            }}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-sm text-[var(--color-tx-primary)] hover:bg-[var(--color-bg-hover)]"
+                          >
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-500 text-xs font-medium text-white">
+                              {(u.display_name || u.username || "?").charAt(0).toUpperCase()}
+                            </div>
+                            <div className="text-left">
+                              <div className="font-medium">{u.display_name || u.username}</div>
+                              <div className="text-xs text-[var(--color-tx-tertiary)]">@{u.username}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
                   </div>
                 )}
                 {selectedUser && (

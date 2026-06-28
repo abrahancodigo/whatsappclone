@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { MessageCircle, Phone, Camera, User, MoreVertical } from "lucide-react";
+import { MessageCircle, Phone, Camera, User, MoreVertical, Users } from "lucide-react";
 import Link from "next/link";
 
 export default async function MainLayout({
@@ -42,6 +42,12 @@ export default async function MainLayout({
             className="rounded-full p-3 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-tx-primary)]"
           >
             <Phone className="h-6 w-6" />
+          </Link>
+          <Link
+            href="/contacts"
+            className="rounded-full p-3 text-[var(--color-tx-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-tx-primary)]"
+          >
+            <Users className="h-6 w-6" />
           </Link>
           <Link
             href="/status"
@@ -95,6 +101,13 @@ export default async function MainLayout({
         >
           <Phone className="h-6 w-6" />
           <span className="text-xs">Llamadas</span>
+        </Link>
+        <Link
+          href="/contacts"
+          className="flex flex-1 flex-col items-center justify-center text-[var(--color-tx-secondary)]"
+        >
+          <Users className="h-6 w-6" />
+          <span className="text-xs">Contactos</span>
         </Link>
         <Link
           href="/status"

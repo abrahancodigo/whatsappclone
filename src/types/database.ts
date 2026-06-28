@@ -165,6 +165,18 @@ export type Database = {
           ended_at?: string | null;
         };
       };
+      contacts: {
+        Row: {
+          user_id: string;
+          contact_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          contact_id: string;
+        };
+        Update: {};
+      };
     };
   };
 };
@@ -176,6 +188,9 @@ export type Message = Database["public"]["Tables"]["messages"]["Row"];
 export type Status = Database["public"]["Tables"]["statuses"]["Row"];
 export type StatusView = Database["public"]["Tables"]["status_views"]["Row"];
 export type Call = Database["public"]["Tables"]["calls"]["Row"];
+export type Contact = Database["public"]["Tables"]["contacts"]["Row"];
+
+export type ContactWithProfile = Contact & { profile: Profile };
 
 export type MessageWithSender = Message & {
   sender?: Pick<Profile, "id" | "display_name" | "username" | "avatar_url">;
