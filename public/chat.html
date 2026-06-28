@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat - Mensajeria</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body class="chat-page">
+    <header class="chat-header">
+      <div class="chat-header-main">
+        <a href="/dashboard.html" class="back-link" aria-label="Volver al panel">&larr;</a>
+        <h1 id="chat-title" class="chat-title">Cargando...</h1>
+      </div>
+      <div class="share-box" aria-label="Compartir chat">
+        <div class="share-row">
+          <span class="share-label">Codigo:</span>
+          <code id="share-code" class="code-badge">------</code>
+        </div>
+        <div class="share-row share-link-row">
+          <span class="share-label">Enlace:</span>
+          <input id="share-link" type="text" readonly />
+          <button id="copy-link-btn" type="button" class="btn btn-ghost">Copiar</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="messages" class="messages" aria-live="polite"></main>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <input id="message-input" type="text" maxlength="2000" placeholder="Escribe un mensaje..." required />
+      <button id="send-btn" type="submit" class="btn btn-primary">Enviar</button>
+    </form>
+
+    <div id="chat-status" class="chat-status" role="status" aria-live="polite"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/chat.js"></script>
+  </body>
+</html>

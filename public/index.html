@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mensajeria - Acceso</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <h1>Mensajeria</h1>
+      <p class="sub">Solo usuario y contraseña. Sin numero de telefono.</p>
+
+      <div class="tabs">
+        <button id="tab-login" class="active" onclick="switchTab('login')">Entrar</button>
+        <button id="tab-register" onclick="switchTab('register')">Registrarse</button>
+      </div>
+
+      <form id="auth-form">
+        <div class="field">
+          <label for="username">Usuario</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn" id="submit-btn">Entrar</button>
+      </form>
+
+      <div id="msg" class="msg"></div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+</body>
+</html>
